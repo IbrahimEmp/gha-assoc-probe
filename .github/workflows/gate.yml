@@ -1,0 +1,67 @@
+# Generic calibration: does a step whose `if:` exempts specific
+# `author_association` values run, when the event payload carries one of the
+# exempted values? Nothing here is specific to any other project.
+name: gate
+
+on:
+  pull_request_target:
+    types: [opened, synchronize, reopened]
+
+permissions:
+  pull-requests: write
+  contents: read
+
+jobs:
+  gate:
+    runs-on: ubuntu-latest
+    steps:
+      - name: reviews
+        id: comments
+        run: |
+          echo "reviews=$(gh api repos/${{ github.repository }}/pulls/${{ github.event.pull_request.number }}/reviews --jq '[.[].state]')" >> "$GITHUB_OUTPUT"
+        env:
+          GH_TOKEN: ${{ github.token }}
+
+      - name: payload
+        run: |
+          echo "PROBE event=${{ github.event_name }}"
+          echo "PROBE action=${{ github.event.action }}"
+          echo "PROBE assoc=${{ github.event.pull_request.author_association }}"
+          echo "PROBE sender=${{ github.event.sender.login }}"
+          echo "PROBE author=${{ github.event.pull_request.user.login }}"
+          echo "PROBE head_fork=${{ github.event.pull_request.head.repo.fork }}"
+          echo "PROBE reviews=${{ steps.comments.outputs.reviews }}"
+          echo "PROBE c1_approved=${{ contains(fromJson(steps.comments.outputs.reviews), 'APPROVED') }}"
+          echo "PROBE c2_event=${{ github.event_name == 'pull_request_target' }}"
+          echo "PROBE c3_action=${{ github.event.action == 'synchronize' }}"
+          echo "PROBE c4_sender_eq_author=${{ github.event.sender.login == github.event.pull_request.user.login }}"
+          echo "PROBE c5_not_contributor=${{ github.event.pull_request.author_association != 'CONTRIBUTOR' }}"
+          echo "PROBE c6_not_member=${{ github.event.pull_request.author_association != 'MEMBER' }}"
+
+      - name: gate-with-assoc-exemptions
+        if: |
+          contains(fromJson(steps.comments.outputs.reviews), 'APPROVED') &&
+          github.event_name == 'pull_request_target' &&
+          github.event.action == 'synchronize' && 
+          github.event.sender.login == github.event.pull_request.user.login && 
+          github.event.pull_request.author_association != 'CONTRIBUTOR' && 
+          github.event.pull_request.author_association != 'MEMBER'
+        run: |
+          echo "GATE-FIRED assoc=${{ github.event.pull_request.author_association }}"
+          REVIEWERS=$(gh api repos/${{ github.repository }}/pulls/${{ github.event.pull_request.number }}/reviews \
+          --jq '{reviewers: [.[] | select(.state == "APPROVED") | .user.login]}')
+          echo "GATE-REVIEWERS $REVIEWERS"
+          echo $REVIEWERS | gh api --method POST repos/${{ github.repository }}/pulls/${{ github.event.pull_request.number }}/requested_reviewers --input - > /dev/null
+          echo "GATE-REREQUEST-RC=$?"
+          exit 1
+        env:
+          GH_TOKEN: ${{ github.token }}
+
+      - name: control-without-assoc-exemptions
+        if: |
+          contains(fromJson(steps.comments.outputs.reviews), 'APPROVED') &&
+          github.event_name == 'pull_request_target' &&
+          github.event.action == 'synchronize' && 
+          github.event.sender.login == github.event.pull_request.user.login
+        run: |
+          echo "CONTROL-FIRED assoc=${{ github.event.pull_request.author_association }}"
