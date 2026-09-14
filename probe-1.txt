@@ -1,0 +1,1 @@
+probe 1: author has no prior commit in the base repository
