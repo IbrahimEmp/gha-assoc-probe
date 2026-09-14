@@ -1,0 +1,22 @@
+name: assoc
+on:
+  pull_request_target:
+    types: [opened, synchronize, reopened]
+  pull_request:
+    types: [opened, synchronize, reopened]
+
+jobs:
+  echo:
+    runs-on: ubuntu-latest
+    steps:
+      - name: probe
+        run: |
+          echo "PROBE event=${{ github.event_name }}"
+          echo "PROBE action=${{ github.event.action }}"
+          echo "PROBE assoc=${{ github.event.pull_request.author_association }}"
+          echo "PROBE sender=${{ github.event.sender.login }}"
+          echo "PROBE author=${{ github.event.pull_request.user.login }}"
+          echo "PROBE head_fork=${{ github.event.pull_request.head.repo.fork }}"
+          echo "PROBE head_owner=${{ github.event.pull_request.head.repo.owner.login }}"
+          echo "PROBE base_owner=${{ github.event.pull_request.base.repo.owner.login }}"
+          echo "PROBE same_sender_author=${{ github.event.sender.login == github.event.pull_request.user.login }}"
